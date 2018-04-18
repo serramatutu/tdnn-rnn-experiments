@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 import random
 import time
@@ -77,7 +78,7 @@ start_time = time.time()
 def elapsed(sec):
     return str(datetime.timedelta(seconds=sec))
 
-logs_path = '/tmp/tensorflow/rnn_oil'
+logs_path = 'c:/temp/tensorflow/rnn_oil'
 writer = tf.summary.FileWriter(logs_path)
 
 def print_step(step, accuracy_total, loss_total):
@@ -87,7 +88,7 @@ def print_step(step, accuracy_total, loss_total):
         print("Average Accuracy: " + "{:.2f}%".format(100*accuracy_total/display_step))
 
 
-with tf.Session as session:
+with tf.Session() as session:
     session.run(init) # inicializa o grafo
 
     # para logging
@@ -97,7 +98,7 @@ with tf.Session as session:
     # salva o grafo atual
     writer.add_graph(session.graph)
 
-    dataset = read_multiple("data.tfrecord")
+    dataset = read_multiple("c:/temp/tensorflow/data.tfrecord")
     batches = dataset.apply(tf.contrib.data.batch_and_drop_remainder(n_input))  
     batches.shuffle(buffer_size=10000) # aleatoriza as batches
 
@@ -112,16 +113,20 @@ with tf.Session as session:
         session.run(iterator.initializer)
 
         while step < training_iters:
-            value = session.run(next_batch)
-
             try:
-                _, accuracy, loss, predition = session.run([optimizer, accuracy, cost, pred], 
+                batch_value = session.run(next_batch)
+                batch_value = np.array([batch_value[0], batch_value[1]])
+                batch_value = batch_value.transpose()[0]
+                _, acc, loss, prediction = session.run([optimizer, accuracy, cost, pred], 
                                                             feed_dict = {
-                                                                batch: next_batch,
+                                                                batch: batch_value,
                                                             })
+                accuracy_total += acc
+                loss_total += loss
                 step += 1
+
                 print_step(step, accuracy_total, loss_total)
             except tf.errors.OutOfRangeError: # quando terminou as batches desta epoch
                 break
 
-        print('Epoch '+i+' finished training.')
+        print('Epoch '+str(i)+' finished training.')
