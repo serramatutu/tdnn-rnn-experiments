@@ -3,89 +3,187 @@ import tensorflow as tf
 import random
 import time
 import datetime
+import argparse
+import sys
+import os
 
-# HYPERPARAMS
-learning_rate = 0.001  # taxa de treinamento
-training_iters = 50000 # quantas iterações de treinamento
-n_epochs = 15          # quantas vezes passa por toda a sequência
-display_step = 50    # de quanto em quanto tempo ativar o logger
-n_input = 200          # quanto a RNN vai olhar para trás
-n_hidden = 512         # número de células LSTM por camada
-depth = 2              # profundidade das camadas
+import data
+import model
 
 FLAGS = None
 
-def get_dataset(dataset_path):
-    # TODO: fazer um arquivo só para os dados
-    return read_multiple(dataset_path)
+def make_feed_dict(batch, x_placeholder, y_placeholder):
+    print(batch)
+    return {
+        x_placeholder: batch[0],
+        y_placeholder: batch[-1]
+    }
 
-def get_batch_iterator(dataset_path):
-    batches = get_dataset(dataset_path).apply(tf.contrib.data.batch_and_drop_remainder(n_input))  
-    batches.shuffle(buffer_size=10000) # aleatoriza as batches
+def do_eval(session, eval_op, x_placeholder, y_placeholder, dataset):
+    print("Evaluating model. Batch size: %d", FLAGS.max_batch_size)
+    batches = dataset.batch(FLAGS.max_batch_size)
+    it = batches.make_one_shot_iterator()
+    next_batch = it.get_next()
 
-    return batches.make_initializable_iterator()
+    total_accuracy = 0
+    step = 0
+    while True:
+        try:
+            feed_dict = make_feed_dict(session.run(next_batch), x_placeholder, y_placeholder)
+            total_accuracy += session.run(eval_op, feed_dict=feed_dict)
 
-def get_batch_placeholders()
+        except tf.errors.OutOfRangeError:
+            break
+        step += 1
+    
+    accuracy = total_accuracy / step
+    print("Examples: %d | Precision: %0.04f" % (step, accuracy))
+    print("Finished evaluation.")
 
-def print_step(step, accuracy_total, loss_total):
-    if (step+1) % display_step == 0:
-        print("Iteration: " + str(step+1) + " (" + str(step/training_iters) + "%)")
-        print("Average Loss: " + "{:.6f}".format(loss_total/display_step))
-        print("Average Accuracy: " + "{:.2f}%".format(100*accuracy_total/display_step))
-        return True
-    return False
-
-def elapsed(sec):
-    return str(datetime.timedelta(seconds=sec))
 
 def train():
     """Treina a RNN"""
     start_time = time.time()
 
-    # iterador que percorre o arquivo de dados
-    iterator = get_batch_iterator(FLAGS.dataset_path)
-    next_batch = iterator.get_next()
+    # dataset com os dados de treinamento
+    dataset = data.QuandlDataset(FLAGS.dataset_path)
 
-    # logger
-    writer = tf.summary.FileWriter(FLAGS.log_path)
+    with tf.Graph().as_default():
+        # cria o modelo
+        # x tem tamanho batch_size e profundidade 2
+        x = tf.placeholder(tf.float32, shape=(2, None))
+        # y é escalar, pois representa apenas a última previsão da rede
+        y = tf.placeholder(tf.float32, shape=())
 
-    init = tf.global_variables_initializer()
+        prediction = model.predict(x, FLAGS.hidden_layer_size, FLAGS.depth)
+        loss = model.loss(prediction, y)
+        train_op = model.train(loss, FLAGS.learning_rate)
+        evaluation = model.evaluation(prediction, y)
+        summary = tf.summary.merge_all()
 
-    with tf.graph().as_default():
-        batch
-        session.run(init) # inicializa o grafo
+        # cria uma sessão
+        session = tf.Session()
+        init = tf.global_variables_initializer()
+        # cria o logger
+        summary_writer = tf.summary.FileWriter(FLAGS.log_dir, session.graph)
+        # para salvar os checkpoints durante o treinamento
+        saver = tf.train.Saver()
+        # agora que está tudo inicializado...
+        session.run(init)
 
-        # para logging
-        accuracy_total = 0
-        loss_total = 0
-
-        # salva o grafo atual
-        writer.add_graph(session.graph)
-
+        # treinamento
         step = 0
-        for i in range(n_epochs):
-            if step >= training_iters:
+        elapsed_time_since_last_log = time.time()
+        for batch_size in range(FLAGS.min_batch_size, FLAGS.max_batch_size, FLAGS.batch_increment):
+            if step > FLAGS.max_iterations: # sai do loop caso tenha treinado o máximo
                 break
 
-            session.run(iterator.initializer)
+            # escolhe a batch
+            batches = dataset.batch(batch_size)
+            batches.shuffle(buffer_size=10000) # randomiza a ordem das batches
+            iterator = batches.make_one_shot_iterator() # TODO: Sepa isso aqui vai mudar
+            next_batch = iterator.get_next()
 
-            while step < training_iters:
-                try:
-                    batch_value = session.run(next_batch)
-                    batch_value = np.array([batch_value[0], batch_value[1]])
-                    batch_value = batch_value.transpose()[0]
-                    _, acc, loss, prediction = session.run([optimizer, accuracy, cost, pred], 
-                                                                feed_dict = {
-                                                                    batch: batch_value,
-                                                                })
-                    accuracy_total += acc
-                    loss_total += loss
-                    step += 1
+            # TODO: isso vai dar muito erro
+            feed_dict = make_feed_dict(session.run(next_batch), x, y)
 
-                    if print_step(step, accuracy_total, loss_total):
-                        accuracy_total = 0
-                        loss_total = 0
-                except tf.errors.OutOfRangeError: # quando terminou as batches desta epoch
-                    break
+            # roda as operações
+            _, loss_value = session.run([train_op, loss], feed_dict=feed_dict)
+            
+            if step % FLAGS.log_frequency == 0:
+                print("Step %d: loss = %.2f (elapsed %.3fs / total %.3fs)" % 
+                      (step, loss_value, elapsed_time_since_last_log, time.time() - start_time))
+                # atualiza o arquivo de eventos
+                summary_str = session.run(summary, feed_dict=feed_dict)
+                summary_writer.add_summary(summary_str, step)
+                summary_writer.flush()
 
-            print('Epoch '+str(i)+' finished training.')
+            if step % FLAGS.eval_frequency == 0:
+                checkpoint_file = os.path.join(FLAGS.log_dir, 'model.ckpt')
+                saver.save(session, checkpoint_file, global_step=step)
+                do_eval(session, evaluation, x, y, dataset)
+
+            step += 1
+
+            
+
+
+def main(_):
+    # cria uma pasta dentro de log_dir com a data e hora atual
+    path = os.path.normpath(FLAGS.log_dir + "/" + datetime.datetime.now().strftime("%Y-%m-%d %Hh %Mm %Ss"))
+    tf.gfile.MakeDirs(path)
+    FLAGS.log_dir = path
+    train()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=0.001,
+        help="Initial learning rate"
+    )
+    parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=50000,
+        help="Maximum amount of training iterations"
+    )
+    parser.add_argument(
+        "--hidden-layer-size",
+        type=int,
+        default=512,
+        help="The number of LSTM units per hidden layer"
+    )
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=2,
+        help="The amount of hidden layers the RNN will have"
+    )
+    parser.add_argument(
+        "--min-batch-size",
+        type=int,
+        default=50,
+        help="The minimum batch size"
+    )
+    parser.add_argument(
+        "--max-batch-size",
+        type=int,
+        default=1000,
+        help="The maximum batch size"
+    )
+    parser.add_argument(
+        "--batch-increment",
+        type=int,
+        default=100,
+        help="The batch increment"
+    )
+    parser.add_argument(
+        "--dataset-path",
+        type=str,
+        default="C:/temp/tensorflow/data.tfrecord",
+        help="The path for getting training data"
+    )
+    parser.add_argument(
+        "--log-frequency",
+        type=int,
+        default=1000,
+        help="How often (in iterations) the training will log the data"
+    )
+    parser.add_argument(
+        "--eval-frequency",
+        type=int,
+        default=1000,
+        help="How often (in iterations) the training will log the data"
+    )
+    parser.add_argument(
+        "--log-dir",
+        type=str,
+        default="C:/temp/tensorflow/logs",
+        help="The folder to keep logging files"
+    )
+
+    FLAGS, unparsed = parser.parse_known_args()
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    

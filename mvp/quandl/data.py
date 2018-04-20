@@ -30,6 +30,7 @@ class QuandlSequenceDataset:
     """Dataset que contém uma sequência, que pode ser dividida em batches"""
     
     def __init__(self, sequence):
+        print(sequence)
         self._dataset = tf.data.Dataset.from_tensor_slices(sequence)
 
     def batch(self, batch_size, drop_remainder=True):
@@ -38,7 +39,7 @@ class QuandlSequenceDataset:
             batches = self._dataset.apply(tf.contrib.data.batch_and_drop_remainder(batch_size))
         else:
             batches = self._dataset.batch(batch_size)
-        
+
         return batches
 
 
