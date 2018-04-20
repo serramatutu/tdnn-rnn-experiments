@@ -91,5 +91,5 @@ def write_examples(path):
 
 if __name__ == "__main__":
     import sys
-    write_examples(sys.argv[1])
+    write_sequence(sys.argv[1])
     print("Done")
