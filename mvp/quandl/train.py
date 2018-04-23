@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import numpy as np
 import tensorflow as tf
 import random
@@ -81,10 +84,9 @@ def train():
             # escolhe a batch
             batches = dataset.batch(batch_size)
             batches.shuffle(buffer_size=10000) # randomiza a ordem das batches
-            iterator = batches.make_one_shot_iterator() # TODO: Sepa isso aqui vai mudar
+            iterator = batches.make_one_shot_iterator() # TODO: isso vai deixar cada vez mais lento
             next_batch = iterator.get_next()
 
-            # TODO: isso vai dar muito erro
             feed_dict = make_feed_dict(session.run(next_batch), x, y)
 
             # roda as operações
@@ -162,7 +164,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset-path",
         type=str,
-        default="C:/temp/tensorflow/data.tfrecord",
+        default="test/data.tfrecord",
         help="The path for getting training data"
     )
     parser.add_argument(
@@ -180,7 +182,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--log-dir",
         type=str,
-        default="C:/temp/tensorflow/logs",
+        default="test/logs",
         help="The folder to keep logging files"
     )
 

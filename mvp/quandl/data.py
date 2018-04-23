@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import numpy as np
 import tensorflow as tf
 
@@ -30,7 +33,8 @@ class QuandlSequenceDataset:
     """Dataset que contém uma sequência, que pode ser dividida em batches"""
     
     def __init__(self, sequence):
-        print(sequence)
+        sequence = tf.stack(sequence)
+        sequence = tf.split(sequence, sequence.shape[1], 1)
         self._dataset = tf.data.Dataset.from_tensor_slices(sequence)
 
     def batch(self, batch_size, drop_remainder=True):
@@ -74,7 +78,6 @@ class QuandlDataset:
 
         sequence_iterator = self._dataset.make_one_shot_iterator() # obtém um iterador por todas as sequências
         next_sequence = sequence_iterator.get_next()
-
         with tf.Session() as sess:
             while True:
                 try:
@@ -84,23 +87,31 @@ class QuandlDataset:
                     datasets.append(seq_dataset.batch(batch_size, drop_remainder))
                 except tf.errors.OutOfRangeError:
                     break
+
+        ret = datasets[0]
+        for ds in datasets[1:]:
+            ret = ret.concatenate(ds)
         
-        return tf.data.Dataset.zip(tuple(datasets))
+        return ret
 
 
 def main():
-    d = QuandlDataset('c:/temp/tensorflow/sequence_data.tfrecord')
-    batches = d.batch(10)
-    it = batches.make_one_shot_iterator()
+    d = QuandlDataset('test/data.tfrecord')
+    batches = d.batch(10, drop_remainder=False)
+    
+    print('batches')
+    iterator = batches.make_one_shot_iterator()
+    next_batch = iterator.get_next()
+    print('iterator')
 
     with tf.Session() as sess:
-        next_batch = it.get_next()
         while True:
             try:
-                print(sess.run(next_batch))
+                print(sess.run(next_batch)) # para passar
 
             except tf.errors.OutOfRangeError:
                 break
+    print('finished')
 
 if __name__ == "__main__":
     main()

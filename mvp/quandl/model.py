@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import numpy as np
 import tensorflow as tf
 import random
@@ -10,7 +13,6 @@ sys.path.append('../../datasets/quandl')
 
 rnn = tf.contrib.rnn
 
-# a função RNN gera uma predição baseada no input (x), nos pesos (w) e nas biases (b)
 def predict(batch, n_units, depth):
     """Constrói o modelo da RNN para previsão
 
