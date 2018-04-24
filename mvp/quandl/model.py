@@ -33,6 +33,14 @@ def predict(batch, n_units, depth):
 
     # cria a rede em si e processa a partir da célula LSTM e dos dados e entrada
     outputs, states = rnn.static_rnn(cell, x, dtype=tf.float32)
+    
+    # estados de saída para cada camada
+    output_states = [state.h for state in states]
+    hidden_states = [state.c for state in states]
+    stacked_output_states = tf.stack(output_states)
+    stacked_hidden_states = tf.stack(hidden_states)
+    tf.summary.histogram('output states', stacked_output_states)
+    tf.summary.histogram('hidden states', stacked_hidden_states)
 
     # pra ficar organizadinho :)
     with tf.name_scope("rnn"):
@@ -95,4 +103,6 @@ def evaluation(pred, y):
     Returns:
         accuracy: um tensor escalar de tipo tf.float32 com a precisão do modelo 
     """
-    return pred/y
+    accuracy = tf.abs(pred/y)
+    tf.summary.scalar('accuracy', accuracy)
+    return accuracy
