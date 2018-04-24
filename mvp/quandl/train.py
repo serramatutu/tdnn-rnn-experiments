@@ -16,15 +16,14 @@ import model
 FLAGS = None
 
 def make_feed_dict(batch, x_placeholder, y_placeholder):
-    print(batch)
     return {
-        x_placeholder: batch[0],
-        y_placeholder: batch[-1]
+        x_placeholder: batch,
+        y_placeholder: batch[1, -1]
     }
 
 def do_eval(session, eval_op, x_placeholder, y_placeholder, dataset):
-    print("Evaluating model. Batch size: %d", FLAGS.max_batch_size)
-    batches = dataset.batch(FLAGS.max_batch_size)
+    print("Evaluating model. Batch size: %d" % (FLAGS.batch_size))
+    batches = dataset.batch(FLAGS.batch_size)
     it = batches.make_one_shot_iterator()
     next_batch = it.get_next()
 
@@ -54,7 +53,7 @@ def train():
     with tf.Graph().as_default():
         # cria o modelo
         # x tem tamanho batch_size e profundidade 2
-        x = tf.placeholder(tf.float32, shape=(2, None))
+        x = tf.placeholder(tf.float32, shape=(FLAGS.batch_size, 2))
         # y é escalar, pois representa apenas a última previsão da rede
         y = tf.placeholder(tf.float32, shape=())
 
@@ -62,13 +61,16 @@ def train():
         loss = model.loss(prediction, y)
         train_op = model.train(loss, FLAGS.learning_rate)
         evaluation = model.evaluation(prediction, y)
-        summary = tf.summary.merge_all()
 
         # cria uma sessão
         session = tf.Session()
         init = tf.global_variables_initializer()
+
+        # merge_all eve ser feito depois da criação do modelo
+        summary = tf.summary.merge_all()
         # cria o logger
         summary_writer = tf.summary.FileWriter(FLAGS.log_dir, session.graph)
+
         # para salvar os checkpoints durante o treinamento
         saver = tf.train.Saver()
         # agora que está tudo inicializado...
@@ -77,24 +79,27 @@ def train():
         # treinamento
         step = 0
         elapsed_time_since_last_log = time.time()
-        for batch_size in range(FLAGS.min_batch_size, FLAGS.max_batch_size, FLAGS.batch_increment):
-            if step > FLAGS.max_iterations: # sai do loop caso tenha treinado o máximo
+
+        batches = dataset.batch(FLAGS.batch_size)
+        batches = batches.repeat()
+        batches.shuffle(buffer_size=10000) # randomiza a ordem das batches
+        iterator = batches.make_one_shot_iterator()
+        next_batch = iterator.get_next()
+
+        for step in range(FLAGS.max_iterations):
+            try:
+                feed_dict = make_feed_dict(session.run(next_batch), x, y)
+            except tf.errors.OutOfRangeError:
+                print('Ended first epoch at step ' + str(step))
+                print('breaking')
                 break
-
-            # escolhe a batch
-            batches = dataset.batch(batch_size)
-            batches.shuffle(buffer_size=10000) # randomiza a ordem das batches
-            iterator = batches.make_one_shot_iterator() # TODO: isso vai deixar cada vez mais lento
-            next_batch = iterator.get_next()
-
-            feed_dict = make_feed_dict(session.run(next_batch), x, y)
 
             # roda as operações
             _, loss_value = session.run([train_op, loss], feed_dict=feed_dict)
             
             if step % FLAGS.log_frequency == 0:
                 print("Step %d: loss = %.2f (elapsed %.3fs / total %.3fs)" % 
-                      (step, loss_value, elapsed_time_since_last_log, time.time() - start_time))
+                        (step, loss_value, time.time() - elapsed_time_since_last_log, time.time() - start_time))
                 # atualiza o arquivo de eventos
                 summary_str = session.run(summary, feed_dict=feed_dict)
                 summary_writer.add_summary(summary_str, step)
@@ -104,8 +109,10 @@ def train():
                 checkpoint_file = os.path.join(FLAGS.log_dir, 'model.ckpt')
                 saver.save(session, checkpoint_file, global_step=step)
                 do_eval(session, evaluation, x, y, dataset)
-
-            step += 1
+        
+        # salvar o último modelo
+        checkpoint_file = os.path.join(FLAGS.log_dir, 'model.ckpt')
+        saver.save(session, checkpoint_file)
 
             
 
@@ -144,22 +151,10 @@ if __name__ == "__main__":
         help="The amount of hidden layers the RNN will have"
     )
     parser.add_argument(
-        "--min-batch-size",
+        "--batch-size",
         type=int,
-        default=50,
+        default=300,
         help="The minimum batch size"
-    )
-    parser.add_argument(
-        "--max-batch-size",
-        type=int,
-        default=1000,
-        help="The maximum batch size"
-    )
-    parser.add_argument(
-        "--batch-increment",
-        type=int,
-        default=100,
-        help="The batch increment"
     )
     parser.add_argument(
         "--dataset-path",

@@ -33,8 +33,8 @@ class QuandlSequenceDataset:
     """Dataset que contém uma sequência, que pode ser dividida em batches"""
     
     def __init__(self, sequence):
-        sequence = tf.stack(sequence)
-        sequence = tf.split(sequence, sequence.shape[1], 1)
+        sequence = tf.stack([sequence[0], sequence[1]])
+        sequence = tf.transpose(sequence)
         self._dataset = tf.data.Dataset.from_tensor_slices(sequence)
 
     def batch(self, batch_size, drop_remainder=True):
@@ -97,21 +97,20 @@ class QuandlDataset:
 
 def main():
     d = QuandlDataset('test/data.tfrecord')
-    batches = d.batch(10, drop_remainder=False)
+    batches = d.batch(10, drop_remainder=True)
     
-    print('batches')
     iterator = batches.make_one_shot_iterator()
     next_batch = iterator.get_next()
-    print('iterator')
 
     with tf.Session() as sess:
         while True:
             try:
+                print(next_batch)
                 print(sess.run(next_batch)) # para passar
+                print('-------------')
 
             except tf.errors.OutOfRangeError:
                 break
-    print('finished')
 
 if __name__ == "__main__":
     main()

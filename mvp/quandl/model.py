@@ -27,8 +27,6 @@ def predict(batch, n_units, depth):
     """
     # quebra o tensor da batch em vários inputs de tamanho n_input (batch.shape[0])
     x = tf.split(batch, batch.shape[0], 0)
-    for i in range(len(x)): # confia no pai e só vai
-        x[i] = tf.reshape(x[i], [1, 2])
 
     # camadas LSTM de largura n_hidden e profundidade depth
     cell = rnn.MultiRNNCell([rnn.BasicLSTMCell(n_units) for i in range(depth)])
@@ -97,8 +95,4 @@ def evaluation(pred, y):
     Returns:
         accuracy: um tensor escalar de tipo tf.float32 com a precisão do modelo 
     """
-    # Avaliar a precisão
-    # TODO: ver no que dá :p
-    difference = tf.abs(pred - y) # calcula as diferenças entre valores previstos e valores esperados
-    accuracy = tf.reduce_mean(difference/y) # calcula a média das porcentagens de erro
-    return accuracy
+    return pred/y
