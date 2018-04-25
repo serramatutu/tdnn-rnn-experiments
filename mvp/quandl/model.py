@@ -101,8 +101,10 @@ def evaluation(pred, y):
         y: o valor esperado (deve ser o último da batch (y[-1]))
 
     Returns:
-        accuracy: um tensor escalar de tipo tf.float32 com a precisão do modelo 
+        accuracy: um tensor escalar de tipo tf.float32 com a precisão do modelo (entre 0 e 1)
     """
-    accuracy = tf.abs(pred/y)
+    error = tf.minimum(tf.abs((y - pred)/y), tf.constant(1, tf.float32))
+    accuracy = tf.constant(1, tf.float32) - error
+    # accuracy = tf.abs((y - pred)/y)
     tf.summary.scalar('accuracy', accuracy)
     return accuracy

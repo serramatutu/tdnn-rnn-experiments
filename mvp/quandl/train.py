@@ -12,6 +12,7 @@ import os
 
 import data
 import model
+import evaluation
 
 FLAGS = None
 
@@ -20,28 +21,6 @@ def make_feed_dict(batch, x_placeholder, y_placeholder):
         x_placeholder: batch,
         y_placeholder: batch[1, -1]
     }
-
-def do_eval(session, eval_op, x_placeholder, y_placeholder, dataset):
-    print("Evaluating model. Batch size: %d" % (FLAGS.batch_size))
-    batches = dataset.batch(FLAGS.batch_size)
-    it = batches.make_one_shot_iterator()
-    next_batch = it.get_next()
-
-    total_accuracy = 0
-    step = 0
-    while True:
-        try:
-            feed_dict = make_feed_dict(session.run(next_batch), x_placeholder, y_placeholder)
-            total_accuracy += session.run(eval_op, feed_dict=feed_dict)
-
-        except tf.errors.OutOfRangeError:
-            break
-        step += 1
-    
-    accuracy = total_accuracy / step
-    print("Examples: %d | Precision: %0.04f" % (step, accuracy))
-    print("Finished evaluation.")
-
 
 def train():
     """Treina a RNN"""
@@ -61,6 +40,8 @@ def train():
         loss = model.loss(prediction, y)
         train_op = model.train(loss, FLAGS.learning_rate)
         evaluation = model.evaluation(prediction, y)
+
+        print(evaluation)
 
         # cria uma sessão
         session = tf.Session()
@@ -108,7 +89,7 @@ def train():
             if step % FLAGS.eval_frequency == 0:
                 checkpoint_file = os.path.join(FLAGS.log_dir, 'model.ckpt')
                 saver.save(session, checkpoint_file, global_step=step)
-                do_eval(session, evaluation, x, y, dataset)
+                evaluation.evaluate(session, evaluation, x, y, dataset, FLAGS.batch_size)
         
         # salvar o último modelo
         checkpoint_file = os.path.join(FLAGS.log_dir, 'model.ckpt')
